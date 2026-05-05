@@ -19,6 +19,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer, AutoModel
 from tqdm import tqdm
+from collections import defaultdict
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 MODEL_NAME   = "distilbert-base-uncased"   # DistilBERT: lighter and faster than BERT
@@ -222,9 +223,84 @@ def generate_and_save_embeddings():
     print(f"  - train_mean.npy : {train_mean.shape}")
     print(f"  - test_cls.npy   : {test_cls.shape}")
     print(f"  - test_mean.npy  : {test_mean.shape}")
+    
+    # ── GloVe Embeddings ──────────────────────────────────────────────────────
+    print("\nGenerating GloVe embeddings...")
+    
+    # Download GloVe from: https://nlp.stanford.edu/projects/glove/
+    # Download glove.6B.300d.txt from kaggle -> Glove6b dataset
+    # Place glove.6B.300d.txt in data/glove/
+    
+    glove_path = "data/glove/glove.6B.300d.txt"  # local path
+    generate_glove_embeddings(train_texts, test_texts, glove_path)
 
     return train_cls, train_mean, test_cls, test_mean
 
+# ── GloVe Embeddings ──────────────────────────────────────────────────────────
+def load_glove(glove_path):
+    """
+    Loads GloVe vectors from a .txt file into a dictionary.
+    Format of each line: "word 0.123 0.456 ... 0.789"
+    
+    glove_path: path to glove.6B.300d.txt
+    Returns: dict of {word: numpy array of shape (300,)}
+    """
+    print("Loading GloVe vectors...")
+    glove = {}
+    with open(glove_path, "r", encoding="utf-8") as f:
+        for line in f:
+            values = line.split()        # Split line into word + numbers
+            word   = values[0]           # First element is the word
+            vector = np.array(values[1:], dtype=np.float32)  # Rest are floats
+            glove[word] = vector
+    print(f"✓ Loaded {len(glove):,} GloVe vectors")
+    return glove
+
+
+def text_to_glove(texts, glove, dim=300):
+    """
+    Converts a list of texts to GloVe embeddings.
+    Each text becomes the MEAN of its word vectors.
+    Words not in GloVe vocabulary are skipped.
+    
+    texts : list of cleaned text strings
+    glove : dict from load_glove()
+    dim   : GloVe dimension (300 for glove.6B.300d)
+    
+    Returns: numpy array of shape (n_samples, 300)
+    """
+    embeddings = []
+
+    for text in tqdm(texts, desc="Building GloVe embeddings"):
+        words   = text.split()                    # Simple split (already cleaned)
+        vectors = [glove[w] for w in words if w in glove]  # Only known words
+
+        if vectors:
+            # Mean of all word vectors in the sentence
+            embeddings.append(np.mean(vectors, axis=0))
+        else:
+            # If no words found in GloVe (rare), use zero vector
+            embeddings.append(np.zeros(dim))
+
+    return np.array(embeddings)   # Shape: (n_samples, 300)
+
+
+def generate_glove_embeddings(train_texts, test_texts, glove_path):
+    """
+    Full GloVe pipeline: load vectors → convert texts → save to disk
+    """
+    glove      = load_glove(glove_path)
+    train_glove = text_to_glove(train_texts, glove)
+    test_glove  = text_to_glove(test_texts, glove)
+
+    np.save(f"{SAVE_DIR}/train_glove.npy", train_glove)
+    np.save(f"{SAVE_DIR}/test_glove.npy",  test_glove)
+
+    print(f"\n✓ GloVe embeddings saved!")
+    print(f"  - train_glove.npy : {train_glove.shape}")
+    print(f"  - test_glove.npy  : {test_glove.shape}")
+
+    return train_glove, test_glove
 
 # ── Run directly ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":

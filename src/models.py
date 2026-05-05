@@ -1,4 +1,10 @@
-# src/models.py
+"""
+models.py
+---------
+Trains and evaluates 4 models on 5 feature sets:
+  Models: Logistic Regression, LinearSVC, KNN, KMeans
+  Features: BOW+SVD, TF-IDF+SVD, BERT CLS+PCA, BERT Mean+PCA, GloVe+PCA
+"""
 
 import numpy as np
 import time
@@ -6,6 +12,8 @@ import json
 import os
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.cluster import KMeans
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -14,26 +22,16 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report
 )
-
-# ─────────────────────────────────────────────
-# WHY THESE TWO MODELS?
-# LogisticRegression: probabilistic, great baseline, works well on dense features (BERT)
-# LinearSVC: margin-based, typically stronger on sparse/high-dim features (BOW, TF-IDF)
-# Together they let us compare how model choice interacts with feature type
-# ─────────────────────────────────────────────
+from scipy.stats import mode
 
 
 def load_features(base_path=".."):
     """
-    Loads all 4 feature sets (train + test) from embeddings/ directory.
-    Returns a dict where each key is a feature set name.
-    
+    Loads all 5 feature sets (train + test) from embeddings/ directory.
     base_path: root of the project (one level up from src/)
     """
     emb = os.path.join(base_path, "embeddings")
 
-    # np.load() reads .npy files back into numpy arrays
-    # These are the dimensionality-reduced versions of our features
     features = {
         "BOW_SVD": {
             "X_train": np.load(os.path.join(emb, "X_train_bow_svd.npy")),
@@ -51,6 +49,10 @@ def load_features(base_path=".."):
             "X_train": np.load(os.path.join(emb, "X_train_mean_pca.npy")),
             "X_test":  np.load(os.path.join(emb, "X_test_mean_pca.npy")),
         },
+        "GLOVE_PCA": {
+            "X_train": np.load(os.path.join(emb, "X_train_glove_pca.npy")),
+            "X_test":  np.load(os.path.join(emb, "X_test_glove_pca.npy")),
+        },
     }
     return features
 
@@ -66,89 +68,136 @@ def load_labels(base_path=".."):
     return y_train, y_test
 
 
-def get_models():
+def get_supervised_models():
     """
-    Returns a dict of model name → model instance.
-    
+    Returns supervised models dict.
+
     LogisticRegression:
-      - max_iter=1000: default 100 often doesn't converge on text data, so we increase it
-      - random_state=42: for reproducibility
-    
-    LinearSVC:
-      - max_iter=2000: SVM also needs more iterations on text
+      - max_iter=1000: default 100 often doesn't converge on text data
       - random_state=42: reproducibility
+
+    LinearSVC:
+      - max_iter=2000: SVM needs more iterations on text
+      - random_state=42: reproducibility
+
+    KNN:
+      - n_neighbors=5: vote among 5 nearest neighbours
+      - metric="cosine": cosine similarity works better than euclidean for text
+        since it ignores magnitude and only considers direction
     """
     return {
         "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
         "LinearSVC":          LinearSVC(max_iter=2000, random_state=42),
+        "KNN":                KNeighborsClassifier(n_neighbors=5, metric="cosine"),
+    }
+
+
+def compute_metrics(y_test, y_pred, train_time):
+    """
+    Computes all evaluation metrics for a given prediction.
+
+    accuracy  : fraction of correct predictions
+    precision : of all predicted class X, how many were actually X (weighted)
+    recall    : of all actual class X, how many did we predict correctly (weighted)
+    f1        : weighted harmonic mean of precision and recall
+    f1_macro  : unweighted F1 across all classes — required by project spec
+                macro treats all classes equally regardless of size
+    confusion_matrix: NxN matrix where entry [i,j] =
+                number of samples of true class i predicted as class j
+    """
+    return {
+        "accuracy":         round(accuracy_score(y_test, y_pred), 4),
+        "precision":        round(precision_score(y_test, y_pred, average="weighted", zero_division=0), 4),
+        "recall":           round(recall_score(y_test, y_pred, average="weighted", zero_division=0), 4),
+        "f1":               round(f1_score(y_test, y_pred, average="weighted", zero_division=0), 4),
+        "f1_macro":         round(f1_score(y_test, y_pred, average="macro", zero_division=0), 4),
+        "train_time":       train_time,
+        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
+        # .tolist() converts numpy array → Python list so it's JSON serializable
     }
 
 
 def train_and_evaluate(model, X_train, X_test, y_train, y_test):
     """
-    Trains a model and returns a dict of evaluation metrics.
-    
-    time.time(): we record wall-clock time before and after fit()
-    to measure how long training took in seconds.
-    
-    accuracy_score: fraction of correct predictions
-    precision_score: of all predicted class X, how many were actually X
-    recall_score: of all actual class X, how many did we correctly predict
-    f1_score: harmonic mean of precision and recall
-    average='weighted': accounts for class imbalance by weighting by support
-    
-    confusion_matrix: NxN matrix where entry [i,j] = 
-      number of samples of true class i predicted as class j
+    Trains a supervised model and returns evaluation metrics.
     """
-    # ── Training ──
     start = time.time()
     model.fit(X_train, y_train)
-    train_time = time.time() - start  # seconds
+    train_time = round(time.time() - start, 4)
 
-    # ── Prediction ──
     y_pred = model.predict(X_test)
 
-    # ── Metrics ──
-    results = {
-        "accuracy":  accuracy_score(y_test, y_pred),
-        "precision": precision_score(y_test, y_pred, average="weighted", zero_division=0),
-        "recall":    recall_score(y_test, y_pred, average="weighted", zero_division=0),
-        "f1":        f1_score(y_test, y_pred, average="weighted", zero_division=0),
-        "train_time": round(train_time, 4),
-        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
-        # .tolist() converts numpy array → Python list so it's JSON serializable
-        "classification_report": classification_report(y_test, y_pred, zero_division=0)
-    }
+    results = compute_metrics(y_test, y_pred, train_time)
+
+    # classification_report gives per-class breakdown — printed but not saved to JSON
+    results["classification_report"] = classification_report(y_test, y_pred, zero_division=0)
+
+    return results
+
+
+def train_and_evaluate_kmeans(X_train, X_test, y_train, y_test):
+    """
+    KMeans is unsupervised — it has no concept of class labels during training.
+    It just groups similar samples into n_clusters clusters.
+
+    After clustering, we map each cluster ID to the most frequent true label
+    in that cluster using majority voting. This is the standard way to evaluate
+    KMeans on a classification task.
+
+    n_init=10: runs KMeans 10 times with different seeds, picks the best result
+               (lowest inertia) — makes results more stable
+    """
+    n_classes = len(np.unique(y_train))
+
+    kmeans = KMeans(
+        n_clusters=n_classes,
+        random_state=42,
+        n_init=10
+    )
+
+    start = time.time()
+    kmeans.fit(X_train)
+    train_time = round(time.time() - start, 4)
+
+    # Map cluster ID → majority true label using training data
+    train_clusters = kmeans.predict(X_train)
+    cluster_to_label = {}
+    for cluster_id in range(n_classes):
+        mask = train_clusters == cluster_id
+        if mask.sum() > 0:
+            # mode() returns the most frequent value in y_train for this cluster
+            cluster_to_label[cluster_id] = mode(y_train[mask], keepdims=True).mode[0]
+        else:
+            cluster_to_label[cluster_id] = 0
+
+    # Convert cluster predictions → class label predictions
+    cluster_labels = kmeans.predict(X_test)
+    y_pred = np.array([cluster_to_label[c] for c in cluster_labels])
+
+    results = compute_metrics(y_test, y_pred, train_time)
+    results["classification_report"] = classification_report(y_test, y_pred, zero_division=0)
+
     return results
 
 
 def run_all_experiments(base_path=".."):
     """
-    Runs all 8 experiments (2 models × 4 feature sets).
+    Runs all 20 experiments (4 models × 5 feature sets).
     Saves results to outputs/results.json for use in visualizations.
-    
-    Structure of results dict:
-    {
-      "BOW_SVD": {
-        "LogisticRegression": { accuracy, precision, recall, f1, ... },
-        "LinearSVC":          { ... }
-      },
-      "TFIDF_SVD": { ... },
-      ...
-    }
     """
     print("Loading features and labels...")
     features = load_features(base_path)
     y_train, y_test = load_labels(base_path)
-    models = get_models()
+    supervised_models = get_supervised_models()
 
     all_results = {}
 
+    # ── Supervised Models ──
     for feat_name, feat_data in features.items():
         print(f"\n── Feature set: {feat_name} ──")
         all_results[feat_name] = {}
 
-        for model_name, model in models.items():
+        for model_name, model in supervised_models.items():
             print(f"  Training {model_name}...", end=" ")
 
             results = train_and_evaluate(
@@ -159,33 +208,45 @@ def run_all_experiments(base_path=".."):
                 y_test
             )
 
-            # Print a quick summary to console
-            print(f"Accuracy: {results['accuracy']:.4f} | F1: {results['f1']:.4f} | Time: {results['train_time']}s")
+            print(f"Accuracy: {results['accuracy']} | F1 Macro: {results['f1_macro']} | Time: {results['train_time']}s")
+            print(f"\n  Classification Report ({feat_name} + {model_name}):")
+            print(results["classification_report"])
 
-            # Store (without the long classification_report string, save separately)
+            # Save without classification_report string (too long for JSON)
             all_results[feat_name][model_name] = {
                 k: v for k, v in results.items() if k != "classification_report"
             }
 
-            # Print full classification report (per-class breakdown)
-            print(f"\n  Classification Report ({feat_name} + {model_name}):")
-            print(results["classification_report"])
+    # ── KMeans (Unsupervised) ──
+    print("\n── KMeans (Unsupervised Clustering) ──")
+
+    for feat_name, feat_data in features.items():
+        print(f"\n  Feature set: {feat_name}...", end=" ")
+
+        results = train_and_evaluate_kmeans(
+            feat_data["X_train"],
+            feat_data["X_test"],
+            y_train,
+            y_test
+        )
+
+        print(f"Accuracy: {results['accuracy']} | F1 Macro: {results['f1_macro']} | Time: {results['train_time']}s")
+        print(results["classification_report"])
+
+        all_results[feat_name]["KMeans"] = {
+            k: v for k, v in results.items() if k != "classification_report"
+        }
 
     # ── Save to JSON ──
-    # This file will be read by visualizations.py to generate charts
     out_path = os.path.join(base_path, "outputs", "results.json")
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     with open(out_path, "w") as f:
         json.dump(all_results, f, indent=2)
-    # json.dump: serializes Python dict → JSON string and writes to file
-    # indent=2: pretty-prints with 2-space indentation (readable)
 
     print(f"\n✓ Results saved to {out_path}")
     return all_results
 
 
 if __name__ == "__main__":
-    # When you run `python src/models.py` directly,
-    # base_path needs to point to project root (one level up from src/)
     results = run_all_experiments(base_path="..")

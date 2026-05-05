@@ -26,7 +26,7 @@ VARIANCE_THRESHOLD  = 0.95      # We want to explain 95% of variance
 RANDOM_SEED         = 42
 DATA_DIR            = "data"
 EMB_DIR             = "embeddings"
-SAVE_DIR            = "data"
+SAVE_DIR            = "embeddings"
 PLOT_DIR            = "outputs"
 
 
@@ -164,6 +164,11 @@ def reduce_and_save():
     test_cls   = np.load(f"{EMB_DIR}/test_cls.npy")
     train_mean = np.load(f"{EMB_DIR}/train_mean.npy")
     test_mean  = np.load(f"{EMB_DIR}/test_mean.npy")
+    
+    # ── Load GloVe Features ───────────────────────────────────────────────────
+    print("Loading GloVe embeddings...")
+    train_glove = np.load(f"{EMB_DIR}/train_glove.npy")
+    test_glove  = np.load(f"{EMB_DIR}/test_glove.npy")
 
     # ── Explained Variance Analysis ───────────────────────────────────────────
     print("\n── Explained Variance Analysis ──────────────────────────────────")
@@ -179,6 +184,9 @@ def reduce_and_save():
 
     print("Mean Pool Embeddings (PCA):")
     n_mean = find_optimal_components(train_mean,   N_COMPONENTS_DENSE,  "Mean Pool", is_sparse=False)
+    
+    print("GloVe Embeddings (PCA):")
+    n_glove = find_optimal_components(train_glove, N_COMPONENTS_DENSE, "GloVe", is_sparse=False)
 
     # ── Apply Reduction ───────────────────────────────────────────────────────
     print("\n── Applying Dimensionality Reduction ────────────────────────────")
@@ -188,6 +196,7 @@ def reduce_and_save():
     n_tfidf_final = min(n_tfidf, N_COMPONENTS_SPARSE)
     n_cls_final   = min(n_cls,   N_COMPONENTS_DENSE)
     n_mean_final  = min(n_mean,  N_COMPONENTS_DENSE)
+    n_glove_final = min(n_glove, N_COMPONENTS_DENSE)
 
     X_train_bow_svd,   X_test_bow_svd,   _ = apply_reduction(
         X_train_bow,   X_test_bow,   n_bow_final,   "BoW SVD",       is_sparse=True)
@@ -200,6 +209,9 @@ def reduce_and_save():
 
     X_train_mean_pca,  X_test_mean_pca,  _ = apply_reduction(
         train_mean,    test_mean,    n_mean_final,  "Mean Pool PCA", is_sparse=False)
+    
+    X_train_glove_pca, X_test_glove_pca, _ = apply_reduction(
+        train_glove, test_glove, n_glove_final, "GloVe PCA", is_sparse=False)
 
     # ── Save Reduced Features ─────────────────────────────────────────────────
     # Reduced features are now dense (numpy arrays) — save as .npy
@@ -211,6 +223,8 @@ def reduce_and_save():
     np.save(f"{SAVE_DIR}/X_test_cls_pca.npy",     X_test_cls_pca)
     np.save(f"{SAVE_DIR}/X_train_mean_pca.npy",   X_train_mean_pca)
     np.save(f"{SAVE_DIR}/X_test_mean_pca.npy",    X_test_mean_pca)
+    np.save(f"{SAVE_DIR}/X_train_glove_pca.npy", X_train_glove_pca)
+    np.save(f"{SAVE_DIR}/X_test_glove_pca.npy",  X_test_glove_pca)
 
     print("\n✓ All reduced features saved!")
     print(f"  Variance plots saved to '{PLOT_DIR}/'")
@@ -220,6 +234,7 @@ def reduce_and_save():
         "tfidf_svd" : (X_train_tfidf_svd, X_test_tfidf_svd),
         "cls_pca"   : (X_train_cls_pca,   X_test_cls_pca),
         "mean_pca"  : (X_train_mean_pca,  X_test_mean_pca),
+        "glove_pca" : (X_train_glove_pca, X_test_glove_pca),
     }
 
 

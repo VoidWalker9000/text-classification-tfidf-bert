@@ -29,23 +29,38 @@ This project compares 5 feature extraction strategies across 4 classical ML mode
 
 ## Project Structure
 
+```text
 text-classification-tfidf-bert/
-├── data/                        # Raw and processed data (gitignored except .gitkeep)
+│
+├── data/                                   # Raw and processed data (gitignored except .gitkeep)
 │   ├── yahoo_answers.csv
-│   ├── train.csv / test.csv
-│   ├── X_train_bow.npz / X_test_bow.npz
-│   ├── X_train_tfidf.npz / X_test_tfidf.npz
-│   ├── y_train.npy / y_test.npy
+│   ├── train.csv
+│   ├── test.csv
+│   ├── X_train_bow.npz
+│   ├── X_test_bow.npz
+│   ├── X_train_tfidf.npz
+│   ├── X_test_tfidf.npz
+│   ├── y_train.npy
+│   ├── y_test.npy
 │   ├── bow_vectorizer.pkl
 │   └── tfidf_vectorizer.pkl
-├── embeddings/                  # Reduced feature matrices (gitignored except .gitkeep)
-│   ├── X_train_bow_svd.npy / X_test_bow_svd.npy
-│   ├── X_train_tfidf_svd.npy / X_test_tfidf_svd.npy
-│   ├── X_train_cls_pca.npy / X_test_cls_pca.npy
-│   ├── X_train_mean_pca.npy / X_test_mean_pca.npy
-│   ├── X_train_glove_pca.npy / X_test_glove_pca.npy
-│   └── train_cls.npy / train_mean.npy / train_glove.npy (raw embeddings)
-├── outputs/                     # Plots and results
+│
+├── embeddings/                             # Reduced feature matrices (gitignored except .gitkeep)
+│   ├── X_train_bow_svd.npy
+│   ├── X_test_bow_svd.npy
+│   ├── X_train_tfidf_svd.npy
+│   ├── X_test_tfidf_svd.npy
+│   ├── X_train_cls_pca.npy
+│   ├── X_test_cls_pca.npy
+│   ├── X_train_mean_pca.npy
+│   ├── X_test_mean_pca.npy
+│   ├── X_train_glove_pca.npy
+│   ├── X_test_glove_pca.npy
+│   ├── train_cls.npy
+│   ├── train_mean.npy
+│   └── train_glove.npy                     # Raw embeddings
+│
+├── outputs/                                # Plots and results
 │   ├── results.json
 │   ├── accuracy_comparison.png
 │   ├── f1_macro_comparison.png
@@ -56,18 +71,21 @@ text-classification-tfidf-bert/
 │   ├── eda_text_length.png
 │   ├── eda_wordclouds.png
 │   └── variance_*.png
+│
 ├── src/
-│   ├── data_loader.py           # Downloads and samples Yahoo Answers dataset
-│   ├── preprocessing.py         # Text cleaning, BOW, TF-IDF
-│   ├── embeddings.py            # DistilBERT + GloVe feature extraction
-│   ├── dimensionality.py        # Truncated SVD + PCA reduction
-│   ├── models.py                # Train and evaluate all models
-│   └── visualizations.py        # Generate all plots
-├── report/                      # LaTeX report
-├── main.py                      # End-to-end pipeline orchestration
+│   ├── data_loader.py                      # Downloads and samples Yahoo Answers dataset
+│   ├── preprocessing.py                   # Text cleaning, BOW, TF-IDF
+│   ├── embeddings.py                      # DistilBERT + GloVe feature extraction
+│   ├── dimensionality.py                  # Truncated SVD + PCA reduction
+│   ├── models.py                          # Train and evaluate all models
+│   └── visualizations.py                  # Generate all plots
+│
+├── report/                                # LaTeX report
+│
+├── main.py                                # End-to-end pipeline orchestration
 ├── requirements.txt
 └── README.md
-
+```
 ---
 
 ## Setup
